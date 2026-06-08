@@ -1939,7 +1939,7 @@ function PartyPage({ party, setParty }) {
 /* ══════════════════════════════════════════
    BATTLE PAGE — search hook
 ══════════════════════════════════════════ */
-function useBattleSearch() {
+function useBattleSearch(maxCR) {
   const [query,   setQuery]   = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1956,7 +1956,7 @@ function useBattleSearch() {
       // 1️⃣  MM2025 locale
       const mm = await ensureMM2025();
       if (sig.aborted) return;
-      const mmResults = searchMM2025(q, settings?.maxCR ?? null);
+      const mmResults = searchMM2025(q, maxCR ?? null);
       if (mmResults.length) {
         setResults(mmResults.map(normalize5e)); return;
       }
@@ -2001,7 +2001,7 @@ function useBattleSearch() {
    BATTLE PAGE
 ══════════════════════════════════════════ */
 function BattlePage({ party, settings }) {
-  const { query, setQuery, results, setResults, loading, error, search } = useBattleSearch();
+  const { query, setQuery, results, setResults, loading, error, search } = useBattleSearch(settings?.maxCR ?? null);
   const [entries,  setEntries]  = useState([]); // [{id, monster, count}]
   const [rows,     setRows]     = useState([]);
   const [launched, setLaunched] = useState(false);
@@ -2314,3 +2314,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
+     
