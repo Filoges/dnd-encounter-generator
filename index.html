@@ -2005,6 +2005,8 @@ function BattlePage({ party, settings }) {
   const [entries,  setEntries]  = useState([]); // [{id, monster, count}]
   const [rows,     setRows]     = useState([]);
   const [launched, setLaunched] = useState(false);
+  const [newPcName, setNewPcName] = useState('');
+  const [newPcInit, setNewPcInit] = useState('');
 
   function addMonster(m) {
     const existing = entries.find(e => e.monster.slug === m.slug || e.monster.name === m.name);
@@ -2025,22 +2027,30 @@ function BattlePage({ party, settings }) {
 
   function launch() {
     const monsterRows = entries.flatMap(({monster, count}) =>
-      Array.from({length: count}, (_, i) => ({
-        id: genId(),
-        name: count > 1 ? `${monster.name} ${i+1}` : monster.name,
-        initiative: rollDie(20) + abilityMod(monster.dexterity ?? 10),
-        hp: monster.hit_points ?? 0,
-        currentHp: monster.hit_points ?? 0,
-        ac: monster.armor_class,
-        type: 'monster',
-      }))
+      Array.from({length: count}, (_, i) => {
+        const name = count > 1 ? `${monster.name} ${i+1}` : monster.name;
+        const prev  = rows.find(r => r.name === name && r.type === 'monster');
+        const baseHP = monster.hit_points ?? 0;
+        return {
+          id:         prev ? prev.id : genId(),
+          name,
+          initiative: rollDie(20) + abilityMod(monster.dexterity ?? 10),
+          hp:         baseHP,
+          currentHp:  prev ? prev.currentHp : baseHP,   // keep existing HP!
+          ac:         monster.armor_class,
+          type:       'monster',
+        };
+      })
     );
+    const partyNames = new Set((party||[]).map(pc => pc.name));
     const partyRows = (party || []).map(pc => ({
       id: genId(), name: pc.name,
       initiative: parseInt(pc.initiative) || 0,
       hp: null, currentHp: null, ac: null, type: 'player',
     }));
-    const all = [...monsterRows, ...partyRows]
+    // preserve on-the-fly players added during combat
+    const extraPlayers = rows.filter(r => r.type === 'player' && !partyNames.has(r.name));
+    const all = [...monsterRows, ...partyRows, ...extraPlayers]
       .sort((a,b) => b.initiative !== a.initiative ? b.initiative - a.initiative : a.name.localeCompare(b.name));
     setRows(all); setLaunched(true);
   }
@@ -2057,6 +2067,17 @@ function BattlePage({ party, settings }) {
     const idx = rows.findIndex(r => r.id===id); if (idx<0) return;
     const ni = idx+dir; if (ni<0 || ni>=rows.length) return;
     const nr = [...rows]; [nr[idx],nr[ni]]=[nr[ni],nr[idx]]; setRows(nr);
+  }
+
+  function addPcOnTheFly() {
+    const name = newPcName.trim();
+    const init = parseInt(newPcInit);
+    if (!name || isNaN(init)) return;
+    const newRow = { id:genId(), name, initiative:init, hp:null, currentHp:null, ac:null, type:'player' };
+    const updated = [...rows, newRow]
+      .sort((a,b) => b.initiative !== a.initiative ? b.initiative-a.initiative : a.name.localeCompare(b.name));
+    setRows(updated);
+    setNewPcName(''); setNewPcInit('');
   }
 
   const anyEntry = entries.length > 0;
@@ -2223,6 +2244,26 @@ function BattlePage({ party, settings }) {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {/* On-the-fly player add */}
+            {launched && (
+              <div style={{padding:'.6rem 1rem',borderTop:'1px solid var(--border)',background:'var(--surf2)'}}>
+                <div style={{fontSize:'.68rem',color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'.4rem'}}>
+                  + Aggiungi giocatore
+                </div>
+                <div style={{display:'flex',gap:'.4rem',alignItems:'center'}}>
+                  <input className="input-field" placeholder="Nome PG"
+                    value={newPcName} onChange={e=>setNewPcName(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&addPcOnTheFly()}
+                    style={{flex:1}} />
+                  <input className="input-field" type="number" placeholder="Init"
+                    value={newPcInit} onChange={e=>setNewPcInit(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&addPcOnTheFly()}
+                    style={{width:'4rem',textAlign:'center'}} />
+                  <button className="btn btn-secondary" onClick={addPcOnTheFly}
+                    style={{whiteSpace:'nowrap',fontSize:'.78rem'}}>+ PG</button>
+                </div>
               </div>
             )}
           </div>
