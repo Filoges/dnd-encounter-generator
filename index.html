@@ -1577,6 +1577,7 @@ function InitiativeTracker({ encounterName, monster, allMonsters, encTrigger, pa
   const [variantCounts, setVariantCounts] = useState({});
   const [rows,          setRows]          = useState([]);
   const [launched,      setLaunched]      = useState(false);
+  const [dmgState,      setDmgState]      = useState(null); // {id, val}
 
   // Helper: get stable key for a monster object
   function mKey(m) { return m.slug || m.name; }
@@ -1669,6 +1670,11 @@ function InitiativeTracker({ encounterName, monster, allMonsters, encTrigger, pa
   function setHpDirect(id, val) {
     const n=parseInt(val);
     if(!isNaN(n)) setRows(rows.map(r=>r.id===id?{...r,currentHp:Math.max(0,n)}:r));
+  }
+  function applyDmg(id) {
+    const n = parseInt(dmgState?.val);
+    if (!isNaN(n) && n !== 0) changeHp(id, -n);
+    setDmgState(null);
   }
   function removeRow(id) { setRows(rows.filter(r=>r.id!==id)); }
   function moveRow(id,dir) {
@@ -1799,21 +1805,35 @@ function InitiativeTracker({ encounterName, monster, allMonsters, encTrigger, pa
                     </td>
                     <td>
                       {row.type==='monster' ? (
-                        <div className="hp-ctrl">
-                          <button className="btn btn-secondary" style={{padding:'1px 5px',fontSize:'.7rem'}}
-                            onClick={()=>changeHp(row.id,-1)}>−</button>
-                          <input
-                            className="hp-val"
-                            style={{background:'transparent',border:'none',color:row.currentHp===0?'var(--red)':'var(--text)',outline:'none',cursor:'text'}}
-                            value={`${row.currentHp}/${row.hp}`}
-                            onChange={e=>{
-                              const v=e.target.value.split('/')[0];
-                              setHpDirect(row.id, v);
-                            }}
-                          />
-                          <button className="btn btn-secondary" style={{padding:'1px 5px',fontSize:'.7rem'}}
-                            onClick={()=>changeHp(row.id,1)}>+</button>
-                        </div>
+                        dmgState?.id === row.id ? (
+                          <div style={{display:'flex',gap:'.2rem',alignItems:'center'}}>
+                            <input type="number" placeholder="Danno"
+                              autoFocus
+                              value={dmgState.val}
+                              onChange={e=>setDmgState({...dmgState,val:e.target.value})}
+                              onKeyDown={e=>{if(e.key==='Enter')applyDmg(row.id);if(e.key==='Escape')setDmgState(null);}}
+                              style={{width:'3.8rem',textAlign:'center',background:'var(--surf2)',
+                                border:'1px solid var(--gold)',borderRadius:'4px',
+                                color:'var(--text)',padding:'1px 4px',fontSize:'.78rem'}} />
+                            <button className="btn btn-primary" style={{padding:'1px 6px',fontSize:'.7rem'}}
+                              onClick={()=>applyDmg(row.id)}>✓</button>
+                            <button className="btn btn-secondary" style={{padding:'1px 5px',fontSize:'.7rem'}}
+                              onClick={()=>setDmgState(null)}>✕</button>
+                          </div>
+                        ) : (
+                          <div className="hp-ctrl" style={{cursor:'pointer'}}
+                            title="Clicca per inserire danno"
+                            onClick={()=>setDmgState({id:row.id,val:''})}>
+                            <button className="btn btn-secondary" style={{padding:'1px 5px',fontSize:'.7rem'}}
+                              onClick={e=>{e.stopPropagation();changeHp(row.id,-1);}}>−</button>
+                            <span className="hp-val"
+                              style={{color:row.currentHp===0?'var(--red)':'var(--text)',cursor:'pointer',userSelect:'none'}}>
+                              {row.currentHp}/{row.hp}
+                            </span>
+                            <button className="btn btn-secondary" style={{padding:'1px 5px',fontSize:'.7rem'}}
+                              onClick={e=>{e.stopPropagation();changeHp(row.id,1);}}>+</button>
+                          </div>
+                        )
                       ) : (
                         <span style={{display:'block',textAlign:'center',color:'var(--muted)'}}>—</span>
                       )}
@@ -2007,6 +2027,7 @@ function BattlePage({ party, settings }) {
   const [launched, setLaunched] = useState(false);
   const [newPcName, setNewPcName] = useState('');
   const [newPcInit, setNewPcInit] = useState('');
+  const [dmgState,  setDmgState]  = useState(null); // {id, val}
 
   function addMonster(m) {
     const existing = entries.find(e => e.monster.slug === m.slug || e.monster.name === m.name);
@@ -2061,6 +2082,11 @@ function BattlePage({ party, settings }) {
   function setHpDirect(id, val) {
     const n = parseInt(val);
     if (!isNaN(n)) setRows(rows.map(r => r.id===id ? {...r, currentHp:Math.max(0,n)} : r));
+  }
+  function applyDmg(id) {
+    const n = parseInt(dmgState?.val);
+    if (!isNaN(n) && n !== 0) changeHp(id, -n);
+    setDmgState(null);
   }
   function removeRow(id)   { setRows(rows.filter(r => r.id !== id)); }
   function moveRow(id,dir) {
@@ -2211,20 +2237,37 @@ function BattlePage({ party, settings }) {
                           </td>
                           <td>
                             {row.type==='monster' ? (
-                              <div className="hp-ctrl">
-                                <button className="btn btn-secondary"
-                                  style={{padding:'1px 5px',fontSize:'.7rem'}}
-                                  onClick={()=>changeHp(row.id,-1)}>−</button>
-                                <input className="hp-val"
-                                  style={{background:'transparent',border:'none',
-                                    color:row.currentHp===0?'var(--red)':'var(--text)',
-                                    outline:'none',cursor:'text'}}
-                                  value={`${row.currentHp}/${row.hp}`}
-                                  onChange={e=>{const v=e.target.value.split('/')[0]; setHpDirect(row.id,v);}} />
-                                <button className="btn btn-secondary"
-                                  style={{padding:'1px 5px',fontSize:'.7rem'}}
-                                  onClick={()=>changeHp(row.id,1)}>+</button>
-                              </div>
+                              dmgState?.id === row.id ? (
+                                <div style={{display:'flex',gap:'.2rem',alignItems:'center'}}>
+                                  <input type="number" placeholder="Danno"
+                                    autoFocus
+                                    value={dmgState.val}
+                                    onChange={e=>setDmgState({...dmgState,val:e.target.value})}
+                                    onKeyDown={e=>{if(e.key==='Enter')applyDmg(row.id);if(e.key==='Escape')setDmgState(null);}}
+                                    style={{width:'3.8rem',textAlign:'center',background:'var(--surf2)',
+                                      border:'1px solid var(--gold)',borderRadius:'4px',
+                                      color:'var(--text)',padding:'1px 4px',fontSize:'.78rem'}} />
+                                  <button className="btn btn-primary" style={{padding:'1px 6px',fontSize:'.7rem'}}
+                                    onClick={()=>applyDmg(row.id)}>✓</button>
+                                  <button className="btn btn-secondary" style={{padding:'1px 5px',fontSize:'.7rem'}}
+                                    onClick={()=>setDmgState(null)}>✕</button>
+                                </div>
+                              ) : (
+                                <div className="hp-ctrl" style={{cursor:'pointer'}}
+                                  title="Clicca per inserire danno"
+                                  onClick={()=>setDmgState({id:row.id,val:''})}>
+                                  <button className="btn btn-secondary"
+                                    style={{padding:'1px 5px',fontSize:'.7rem'}}
+                                    onClick={e=>{e.stopPropagation();changeHp(row.id,-1);}}>−</button>
+                                  <span className="hp-val"
+                                    style={{color:row.currentHp===0?'var(--red)':'var(--text)',cursor:'pointer',userSelect:'none'}}>
+                                    {row.currentHp}/{row.hp}
+                                  </span>
+                                  <button className="btn btn-secondary"
+                                    style={{padding:'1px 5px',fontSize:'.7rem'}}
+                                    onClick={e=>{e.stopPropagation();changeHp(row.id,1);}}>+</button>
+                                </div>
+                              )
                             ) : (
                               <span style={{display:'block',textAlign:'center',color:'var(--muted)'}}>—</span>
                             )}
