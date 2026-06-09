@@ -733,20 +733,30 @@ async function ensureMM2025() {
 
 function searchMM2025(q, maxCR) {
   if (!_mm2025 || !_mm2025.length) return [];
-  const ql = q.toLowerCase().trim();
+  const raw_q = q.trim();
   const passesMaxCR = (m) => {
     if (maxCR === null || maxCR === undefined) return true;
     return crToNum(m.cr) <= maxCR;
   };
+  const byType = (typeQ) => {
+    const tl = typeQ.toLowerCase();
+    return _mm2025.filter(m => {
+      const raw = m.type != null && typeof m.type === 'object' ? m.type.type : m.type;
+      const t = typeof raw === 'string' ? raw : String(raw || '');
+      return t.toLowerCase().includes(tl) && passesMaxCR(m);
+    });
+  };
+  // prefix "type:" → forza ricerca per tipo, salta la ricerca per nome
+  if (raw_q.toLowerCase().startsWith('type:')) {
+    const typeQ = raw_q.slice(5).trim();
+    return typeQ ? byType(typeQ) : [];
+  }
+  const ql = raw_q.toLowerCase();
   // 1. search by name
   const byName = _mm2025.filter(m => m.name.toLowerCase().includes(ql) && passesMaxCR(m));
   if (byName.length) return byName;
-  // 2. search by monster type (e.g. 'undead', 'beast', 'dragon'...)
-  return _mm2025.filter(m => {
-    const raw = m.type != null && typeof m.type === 'object' ? m.type.type : m.type;
-    const t = typeof raw === 'string' ? raw : String(raw || '');
-    return t.toLowerCase().includes(ql) && passesMaxCR(m);
-  });
+  // 2. fallback: search by monster type (e.g. 'undead', 'beast', 'dragon'...)
+  return byType(ql);
 }
 
 function useMonster(maxCR) {
@@ -2398,4 +2408,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
-     
