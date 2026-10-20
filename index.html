@@ -426,8 +426,9 @@ function monsterXP(cr) { return CR_XP[String(cr)] || 0; }
 
 // variants: array of normalized monsters; counts: {key:n}; party: [{level,...}]
 // 5e 2024: no multiplier, 3 thresholds per player (Facile / Medio / Difficile)
-function calcEncounterDifficulty(variants, counts, party) {
-  if (!party || !party.length || !variants || !variants.length) return null;
+// playerCount = n° giocatori nel party; level = livello della sfida (tutti i PG considerati a quel livello)
+function calcEncounterDifficulty(variants, counts, playerCount, level) {
+  if (!playerCount || playerCount < 1 || !variants || !variants.length) return null;
   let totalMonsters = 0, totalXP = 0;
   variants.forEach(v => {
     const key = v.slug || v.name;
@@ -438,16 +439,40 @@ function calcEncounterDifficulty(variants, counts, party) {
   });
   if (totalMonsters === 0) return null;
   const thresh = [0, 0, 0]; // Facile, Medio, Difficile
-  party.forEach(pc => {
-    const lvl = Math.min(20, Math.max(1, parseInt(pc.level) || 1));
-    const t = XP_THRESHOLDS[lvl];
-    for (let i = 0; i < 3; i++) thresh[i] += t[i];
-  });
+  const lvl = Math.min(20, Math.max(1, parseInt(level) || 1));
+  const t = XP_THRESHOLDS[lvl];
+  for (let i = 0; i < 3; i++) thresh[i] = t[i] * playerCount;
   let difficulty;
   if      (totalXP < thresh[1]) difficulty = 'Facile';
   else if (totalXP < thresh[2]) difficulty = 'Medio';
   else                          difficulty = 'Difficile';
   return { difficulty, adjustedXP: totalXP, rawXP: totalXP, thresholds: thresh };
+}
+
+function useChallengeLevel() {
+  const [lvl, setLvl] = useState(() => {
+    try { const n = parseInt(localStorage.getItem('challengeLevel')); if (n>=1 && n<=20) return n; } catch(e) {}
+    return 1;
+  });
+  const set = (n) => {
+    const v = Math.min(20, Math.max(1, parseInt(n) || 1));
+    setLvl(v);
+    try { localStorage.setItem('challengeLevel', String(v)); } catch(e) {}
+  };
+  return [lvl, set];
+}
+
+function ChallengeLevelSelect({ value, onChange }) {
+  return (
+    <label style={{display:'inline-flex',alignItems:'center',gap:'.3rem',fontSize:'.72rem',color:'var(--muted)',whiteSpace:'nowrap'}}>
+      Livello sfida
+      <select value={value} onChange={e=>onChange(e.target.value)}
+        style={{background:'var(--surf2)',border:'1px solid var(--border)',borderRadius:'4px',
+          color:'var(--text)',fontSize:'.78rem',padding:'1px 3px'}}>
+        {Array.from({length:20},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}</option>)}
+      </select>
+    </label>
+  );
 }
 
 const DIFF_COLORS = {
@@ -1584,6 +1609,7 @@ function SettingsPage({ settings, setSettings, lists, setLists, party, setParty,
    INITIATIVE TRACKER
 ══════════════════════════════════════════ */
 function InitiativeTracker({ encounterName, monster, allMonsters, encTrigger, party, onLaunchedChange }) {
+  const [challengeLvl, setChallengeLvl] = useChallengeLevel();
   const [variantCounts, setVariantCounts] = useState({});
   const [rows,          setRows]          = useState([]);
   const [launched,      setLaunched]      = useState(false);
@@ -1715,14 +1741,18 @@ function InitiativeTracker({ encounterName, monster, allMonsters, encTrigger, pa
         {(()=>{
           const _diff = calcEncounterDifficulty(
             allMonsters && allMonsters.length ? allMonsters : (monster ? [monster] : []),
-            variantCounts, party);
-          if (!_diff) return null;
-          const _c = DIFF_COLORS[_diff.difficulty];
+            variantCounts, (party||[]).length, challengeLvl);
+          const _c = _diff ? DIFF_COLORS[_diff.difficulty] : null;
           return (
-            <span style={{fontSize:'.68rem',padding:'.1rem .45rem',borderRadius:'99px',fontWeight:'bold',
-              background:_c+'22',color:_c,border:'1px solid '+_c+'44',whiteSpace:'nowrap'}}>
-              {_diff.difficulty} · {_diff.adjustedXP.toLocaleString()} XP
-            </span>
+            <>
+              <ChallengeLevelSelect value={challengeLvl} onChange={setChallengeLvl} />
+              {_diff && (
+                <span style={{fontSize:'.68rem',padding:'.1rem .45rem',borderRadius:'99px',fontWeight:'bold',
+                  background:_c+'22',color:_c,border:'1px solid '+_c+'44',whiteSpace:'nowrap'}}>
+                  {_diff.difficulty} · {_diff.adjustedXP.toLocaleString()} XP
+                </span>
+              )}
+            </>
           );
         })()}
         {launched && (
@@ -2038,6 +2068,7 @@ function BattlePage({ party, settings }) {
   const [newPcName, setNewPcName] = useState('');
   const [newPcInit, setNewPcInit] = useState('');
   const [dmgState,  setDmgState]  = useState(null); // {id, val}
+  const [challengeLvl, setChallengeLvl] = useChallengeLevel();
 
   function addMonster(m) {
     const existing = entries.find(e => e.monster.slug === m.slug || e.monster.name === m.name);
@@ -2070,6 +2101,7 @@ function BattlePage({ party, settings }) {
           currentHp:  prev ? prev.currentHp : baseHP,   // keep existing HP!
           ac:         monster.armor_class,
           type:       'monster',
+          mkey:       monster.slug || monster.name,
         };
       })
     );
@@ -2084,6 +2116,42 @@ function BattlePage({ party, settings }) {
     const all = [...monsterRows, ...partyRows, ...extraPlayers]
       .sort((a,b) => b.initiative !== a.initiative ? b.initiative - a.initiative : a.name.localeCompare(b.name));
     setRows(all); setLaunched(true);
+  }
+
+  // Quante nuove istanze mancano rispetto alla tabella corrente
+  function pendingCount() {
+    return entries.reduce((s,{monster,count}) => {
+      const key = monster.slug || monster.name;
+      const have = rows.filter(r => r.type==='monster' && r.mkey===key).length;
+      return s + Math.max(0, count - have);
+    }, 0);
+  }
+
+  // Aggiunge solo i mostri mancanti, rollando l'iniziativa solo per loro
+  function addMissingMonsters() {
+    let updated = [...rows];
+    entries.forEach(({monster, count}) => {
+      const key = monster.slug || monster.name;
+      const have = updated.filter(r => r.type==='monster' && r.mkey===key);
+      if (count <= have.length) return;
+      if (count > 1) {
+        // se esiste un'unica riga senza numero, rinominala "X 1"
+        updated = updated.map(r => (r.type==='monster' && r.mkey===key && r.name===monster.name)
+          ? {...r, name: monster.name + ' 1'} : r);
+      }
+      const baseHP = monster.hit_points ?? 0;
+      for (let i = have.length + 1; i <= count; i++) {
+        updated.push({
+          id: genId(),
+          name: count > 1 ? `${monster.name} ${i}` : monster.name,
+          initiative: rollDie(20) + abilityMod(monster.dexterity ?? 10),
+          hp: baseHP, currentHp: baseHP,
+          ac: monster.armor_class, type: 'monster', mkey: key,
+        });
+      }
+    });
+    updated.sort((a,b) => b.initiative !== a.initiative ? b.initiative-a.initiative : a.name.localeCompare(b.name));
+    setRows(updated);
   }
 
   function changeHp(id, delta) {
@@ -2173,10 +2241,11 @@ function BattlePage({ party, settings }) {
               </div>
             ))}
             <div style={{marginLeft:'auto', display:'flex', gap:'.5rem', alignItems:'center'}}>
+              <ChallengeLevelSelect value={challengeLvl} onChange={setChallengeLvl} />
               {(()=>{
                 const _bv = entries.map(e=>e.monster);
                 const _bc = Object.fromEntries(entries.map(e=>[e.monster.slug||e.monster.name, e.count]));
-                const _bd = calcEncounterDifficulty(_bv, _bc, party);
+                const _bd = calcEncounterDifficulty(_bv, _bc, (party||[]).length, challengeLvl);
                 if (!_bd) return null;
                 const _c = DIFF_COLORS[_bd.difficulty];
                 return (
@@ -2189,8 +2258,16 @@ function BattlePage({ party, settings }) {
               {launched && (
                 <button className="btn btn-secondary" onClick={()=>{setRows([]); setLaunched(false);}}>↩ Reset</button>
               )}
-              <button className="btn btn-primary" onClick={launch} disabled={!anyEntry}>
-                ⚔️ {launched ? 'Rilancia' : 'Lancia iniziativa'}
+              {launched && (
+                <button className="btn btn-primary" onClick={addMissingMonsters}
+                  disabled={pendingCount()===0}
+                  title="Aggiunge i nuovi mostri alla tabella senza rilanciare l'iniziativa degli altri">
+                  ➕ Aggiungi alla tabella{pendingCount()>0 ? ` (${pendingCount()})` : ''}
+                </button>
+              )}
+              <button className={launched ? 'btn btn-secondary' : 'btn btn-primary'} onClick={launch} disabled={!anyEntry}
+                title={launched ? 'Rilancia l\'iniziativa di tutti i mostri (gli HP vengono mantenuti)' : ''}>
+                ⚔️ {launched ? 'Rilancia tutti' : 'Lancia iniziativa'}
               </button>
             </div>
           </div>
