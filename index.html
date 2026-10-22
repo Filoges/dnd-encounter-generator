@@ -357,11 +357,7 @@ function genId()    { return '_'+Math.random().toString(36).substr(2,9); }
 
 function listProbs(n) {
   if (n===0) return [];
-  const freq=new Array(17).fill(0);
-  for(let a=1;a<=8;a++) for(let b=1;b<=8;b++) freq[a+b]++;
-  const c=new Array(n).fill(0);
-  for(let s=2;s<=16;s++) c[Math.min(s-2,n-1)]+=freq[s];
-  return c.map(x=>x/64);
+  return new Array(n).fill(1/n);   // probabilità uniforme
 }
 function encProb(sides,thresh) { return ((thresh.length/sides)*100).toFixed(0); }
 
@@ -371,7 +367,8 @@ function modStr(score) { const m=abilityMod(score); return m>=0?`+${m}`:`${m}`; 
 /* ══════════════════════════════════════════
    STORAGE
 ══════════════════════════════════════════ */
-const DEF_SETTINGS = { checkDieSides:8, encounterValues:[7,8], maxCR:null };
+const DEF_SCENE_WEIGHTS = { combat:30, hazard:40, event:20, social:10 };
+const DEF_SETTINGS = { checkDieSides:8, encounterValues:[7,8], maxCR:null, sceneWeights:DEF_SCENE_WEIGHTS };
 
 // CR helpers
 function crToNum(cr) {
@@ -451,11 +448,11 @@ function calcEncounterDifficulty(variants, counts, playerCount, level) {
 
 function useChallengeLevel() {
   const [lvl, setLvl] = useState(() => {
-    try { const n = parseInt(localStorage.getItem('challengeLevel')); if (n>=1 && n<=20) return n; } catch(e) {}
+    try { const n = parseInt(localStorage.getItem('challengeLevel')); if (n>=1 && n<=5) return n; } catch(e) {}
     return 1;
   });
   const set = (n) => {
-    const v = Math.min(20, Math.max(1, parseInt(n) || 1));
+    const v = Math.min(5, Math.max(1, parseInt(n) || 1));
     setLvl(v);
     try { localStorage.setItem('challengeLevel', String(v)); } catch(e) {}
   };
@@ -469,10 +466,65 @@ function ChallengeLevelSelect({ value, onChange }) {
       <select value={value} onChange={e=>onChange(e.target.value)}
         style={{background:'var(--surf2)',border:'1px solid var(--border)',borderRadius:'4px',
           color:'var(--text)',fontSize:'.78rem',padding:'1px 3px'}}>
-        {Array.from({length:20},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}</option>)}
+        {Array.from({length:5},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}</option>)}
       </select>
     </label>
   );
+}
+
+const DEF_CHALLENGES = {
+ "hazard": "Ponte pericolante|assi marce e corde sfilacciate su un burrone|—|Salvezza Des|Pericolosa|Contundente|Metà|Il PG cade; 1 ora per risalire o aggirare\nParete da scalare|roccia umida alta quindici metri|—|Prova Atletica|Pericolosa|Contundente|—|Caduta a metà; 1 ora persa per ritentare\nTrappola a pressione|lastra nascosta su un sentiero in rovina|Indagare o Percezione|Salvezza Des|Pericolosa|Perforante|Nessuno|—\nLiane strangolanti|rampicanti che si stringono a chi passa|Natura o Percezione|Prova Atletica o Acrobazia|Lieve|Contundente|—|Afferrato; 1 ora persa a liberarsi\nTempesta improvvisa|pioggia, vento e fulmini senza riparo|—|Salvezza Cos|Lieve|Nessuno|Nessuno|Affaticamento 1 (fino al riposo lungo)\nSabbie mobili|terreno traditore in palude|Sopravvivenza|Prova Atletica|Pericolosa|Contundente|—|Trattenuto; 1 ora per liberarsi\nFrana di sassi|il versante cede sopra il sentiero|Percezione|Salvezza Des|Pericolosa|Contundente|Metà|Sentiero bloccato; 1 ora per aggirare\nGhiaccio sottile|lago gelato da attraversare|—|Prova Acrobazia o Sopravvivenza (restare in piedi)|Lieve|Nessuno|Nessuno|Affaticamento 1 (fino al riposo lungo)\nGuado in piena|fiume alto e veloce|—|Prova Atletica|Lieve|Contundente|—|Trascinati a valle in un esagono adiacente\nNebbia densa|nessuna visibilità|—|Prova Sopravvivenza|Lieve|Nessuno|—|Il gruppo si perde; 1 ora persa\nGas di palude|bolle di gas velenoso|Percezione o Natura|Salvezza Cos|Lieve|Veleno|Nessuno|Avvelenato 1 ora\nSpore velenose|funghi che rilasciano nubi|Natura|Salvezza Cos|Pericolosa|Veleno|Nessuno|Avvelenato 4 ore\nFosse mimetizzate|buche coperte da fogliame|Percezione|Salvezza Des|Lieve|Contundente|Nessuno|1 ora per risalire\nRete di rami e campanelli|trappola di cacciatori|Indagare|Salvezza Des|Lieve|Nessuno|Nessuno|Trattenuti; 1 ora persa; i cacciatori sono allertati\nTerreno scivoloso|pendio di fango o ghiaia|—|Salvezza Des|Lieve|Contundente|Nessuno|Prono; 1 ora persa a risistemarsi\nCalore soffocante|ore di marcia sotto un sole cocente|—|Salvezza Cos|Pericolosa|Nessuno|Nessuno|Affaticamento 1 (fino al riposo lungo)\nFreddo mortale|notte gelida|—|Salvezza Cos|Pericolosa|Nessuno|Nessuno|Affaticamento 1 (fino al riposo lungo); niente benefici dal riposo breve\nForesta di rovi|sentiero chiuso da spine|—|Prova Atletica|Lieve|Perforante|—|1 ora per aprirsi un passaggio\nCunicolo che si restringe|passaggio sempre più angusto|—|Prova Acrobazia o Atletica|Lieve|Contundente|—|Incastrato; 1 ora per liberarlo\nAlbero cavo con api|favo gigante nel tronco|Natura o Percezione|Salvezza Cos|Lieve|Veleno|Metà|Avvelenato 1 ora\nStatua che osserva|sembra seguire il gruppo con lo sguardo|Arcano o Indagare|Salvezza Car|Pericolosa|Necrotico|Metà|Maledetto: svantaggio ai tiri salvezza fino al riposo lungo\nCerchio di pietre che sussurra|voci che confondono|Arcano|Salvezza Sag|Pericolosa|Psichico|Metà|Spaventato 1 ora: svantaggio a prove e tiri per colpire\nRovine instabili|un soffitto che cede|Percezione|Salvezza Des|Pericolosa|Contundente|Metà|Via sbarrata; 1 ora per liberarla\nCancello rugginoso|chiuso, ma serve passare|—|Prova Strumenti da scasso o Forza|Lieve|Nessuno|—|1 ora persa; il rumore attira attenzione\nPozzo avvelenato|acqua apparentemente buona|Natura o Medicina|Salvezza Cos|Pericolosa|Veleno|Nessuno|Avvelenato 8 ore\nFuoco di bosco|l'incendio avanza|—|Salvezza Des|Pericolosa|Fuoco|Metà|1 ora per aggirare; il gruppo finisce in un esagono adiacente\nCaverna con aria viziata|poco ossigeno, torce che si spengono|Sopravvivenza|Salvezza Cos|Lieve|Nessuno|Nessuno|Avvelenati 1 ora\nCadavere con trappola|oggetto prezioso su un cadavere sospetto|Indagare|Salvezza Cos|Pericolosa|Veleno|Metà|Avvelenato 8 ore\nAlbero caduto|strada bloccata|—|Prova Atletica o Strumenti da falegname|Lieve|Nessuno|—|1 ora persa\nPonte di corda ingannevole|trucco ottico, il passaggio non è dove sembra|Intuizione o Percezione|Salvezza Des|Lieve|Contundente|Nessuno|Caduta; 1 ora persa\nVento allucinogeno|odori che alterano la mente|—|Salvezza Sag|Pericolosa|Psichico|Metà|Confuso 1 ora: svantaggio a prove e tiri per colpire",
+ "event": "Nebbia disorientante|il gruppo perde la rotta|—|Prova Sopravvivenza|Lieve|Nessuno|—|Spostati in un esagono adiacente a caso; 1 ora persa\nTempesta violenta|vento e pioggia battente|—|Salvezza Cos|Pericolosa|Nessuno|Nessuno|Affaticamento 1 (fino al riposo lungo)\nFuochi fatui|luci che attirano nel bosco|—|Salvezza Sag|Lieve|Nessuno|Nessuno|Affascinati 1 ora; il gruppo viene condotto in un esagono adiacente\nCaldo soffocante|marcia sotto il sole|—|Salvezza Cos|Lieve|Nessuno|Nessuno|Affaticamento 1 (fino al riposo lungo)\nGelo improvviso|temperatura in picchiata|—|Salvezza Cos|Lieve|Nessuno|Nessuno|Affaticamento 1 (fino al riposo lungo)\nNube di polline|aria carica di allergeni|—|Salvezza Cos|Lieve|Nessuno|Nessuno|Avvelenati 1 ora\nSciami di insetti|fastidio costante|—|Salvezza Cos|Lieve|Nessuno|Nessuno|Svantaggio a Percezione e Furtività fino al prossimo riposo\nFrana sul sentiero|la strada è bloccata|—|Prova Atletica o Sopravvivenza|Lieve|Nessuno|—|1 ora persa; il gruppo finisce in un esagono adiacente\nPioggia di cenere|aria irrespirabile|—|Salvezza Cos|Pericolosa|Nessuno|Nessuno|Accecati 1 ora\nBrezza stregata|voci che confondono|—|Salvezza Sag|Lieve|Nessuno|Nessuno|Spaventati 1 ora: svantaggio a prove e tiri per colpire\nOscurità innaturale|cala il buio all'improvviso|—|Salvezza Sag|Pericolosa|Nessuno|Nessuno|Spaventati 1 ora: svantaggio a prove e tiri per colpire\nFiume in piena|il guado non è praticabile|—|Prova Sopravvivenza|Lieve|Nessuno|—|1 ora persa; il gruppo finisce in un esagono adiacente\nSentiero che inganna|la strada sembra tornare allo stesso punto|—|Prova Indagare o Sopravvivenza|Lieve|Nessuno|—|1 ora persa; tornano all'esagono precedente\nPollini narcotici|sonnolenza improvvisa|—|Salvezza Cos|Pericolosa|Nessuno|Nessuno|Affaticamento 1 (fino al riposo lungo)\nVento allucinogeno|odori che alterano la mente|—|Salvezza Sag|Pericolosa|Nessuno|Nessuno|Confusi 1 ora: svantaggio a prove e tiri per colpire\nFango profondo|ogni passo costa fatica|—|Prova Atletica|Lieve|Nessuno|—|1 ora persa; Affaticamento 1 (fino al riposo lungo)\nBranco in fuga|stampede che travolge il gruppo|—|Salvezza Des|Lieve|Contundente|Nessuno|1 ora persa a riorganizzarsi\nAcqua stagnante|sete e acqua sospetta|—|Salvezza Cos|Lieve|Nessuno|Nessuno|Avvelenati 8 ore se si beve\nSonno spezzato|notte disturbata da rumori e incubi|—|Salvezza Sag|Lieve|Nessuno|Nessuno|Il riposo lungo recupera solo metà PF e slot\nCielo che si oscura|giorno che diventa notte|—|Salvezza Sag|Lieve|Nessuno|Nessuno|Spaventati 1 ora: svantaggio a prove e tiri per colpire\nTempesta di fulmini|un cataclisma di nubi nere e saette: bisogna mettersi in salvo|—|Salvezza Des (mettersi in salvo)|Mortale|Fulmine|Metà|Affaticamento 1 (fino al riposo lungo)\nTornado di fuoco|una colonna di fiamme e vento che avanza: bisogna scappare|—|Salvezza Des (scappare in tempo)|Mortale|Fuoco|Metà|Affaticamento 1 (fino al riposo lungo)",
+ "social": "Mercante in difficoltà|carro rotto sul sentiero|Persuasione o Strumenti|Media|ricompensa o informazioni\nPellegrini|gruppo di fedeli in marcia|Religione o Persuasione|Facile|benedizione o notizie\nEsattore di pedaggio|posto di blocco con una tassa discutibile|Persuasione, Inganno o Intimidire|Media|passare gratis o pagare\nCavaliere errante|sfida a una gara non letale|Atletica o Intrattenere|Media|onore e un favore\nGuaritore ambulante|offre rimedi|Medicina o Intuizione|Facile|cure o imbroglio\nSpirito gentile / raggirevole|fantasma che chiede un favore o ne cerca l'inganno|Religione, Intuizione o Persuasione|Media|benedizione o maledizione",
+ "monsterSit": "Dormono|possibile aggirarli o colpire di sorpresa. *Furtività*\nIn caccia|puntano un'altra preda, il gruppo può intervenire o evitare\nA difesa di qualcosa|cuccioli, tesoro o territorio\nDisposti a trattare|parlare è un'opzione concreta. *Persuasione o Intuizione*\nStanno mangiando|distratti, svantaggio alle prove di Percezione\nIn movimento|stanno per attraversare il sentiero\nTendono un'imboscata|sorpresa contro il gruppo (prova di Percezione passiva)\nIn fuga|scappano da qualcosa di più grosso\nAffamati e disperati|attaccano subito, ma accettano cibo",
+ "combatHaz": "Nebbia|copertura leggera, nessuno vede a più di 6 m|\nTerreno instabile|terreno difficile e possibili cadute|Contundente\nPioggia battente|svantaggio alle prove di Percezione basate sull'udito|\nRovi|terreno difficile con danno minore a chi lo attraversa|Perforante\nVento forte|svantaggio agli attacchi a distanza|\nAcqua alta|chi cade rischia di essere trascinato|\nFuoco di bosco|l'incendio si propaga ogni round|Fuoco\nPozza di fango|Destrezza per non rimanere bloccati|"
+};
+
+const SCENE_LABELS = {
+  combat:'⚔️ Combattimento', hazard:'🪤 Ostacolo / pericolo',
+  event:'🌩️ Evento ambientale', social:'🗣️ Incontro sociale',
+};
+const HAZ_DAMAGE = { // [Lieve, Pericolosa, Mortale] per livello 1..5
+  1:['1d6','2d6','3d10'], 2:['1d8','2d8','4d10'], 3:['2d6','3d8','5d10'],
+  4:['2d8','3d10','6d10'], 5:['2d10','4d10','8d10'],
+};
+const HAZ_DC = {
+  1:[10,12,16], 2:[10,13,17], 3:[11,13,18], 4:[11,14,19], 5:[12,15,20],
+};
+const DETECT_DC = [13, 16, 19];   // Lieve, Pericolosa, Mortale
+const SOCIAL_DC = { Facile:10, Media:15, Difficile:20 };
+function sevIdx(sev) { const s=String(sev||'').toLowerCase(); return s.startsWith('m')?2:(s.startsWith('p')?1:0); }
+function lvl5(l) { return Math.min(5, Math.max(1, parseInt(l)||1)); }
+function hazardMech(sev, level) {
+  const L=lvl5(level), i=sevIdx(sev);
+  return { dc:HAZ_DC[L][i], dice:HAZ_DAMAGE[L][i] };
+}
+function rollDice(expr) {
+  const m=/^(\d+)d(\d+)$/.exec(expr); if(!m) return {total:0,rolls:[]};
+  const rolls=Array.from({length:+m[1]},()=>rollDie(+m[2]));
+  return { total:rolls.reduce((a,b)=>a+b,0), rolls };
+}
+function parseTable(text, fields) {
+  return String(text||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+    const p=l.split('|').map(s=>s.trim()); const o={};
+    fields.forEach((f,i)=>{ o[f]=p[i]||''; }); return o;
+  });
+}
+const TABLE_FIELDS = {
+  hazard:['name','desc','detect','check','sev','dtype','onSave','effect'],
+  event:['name','desc','detect','check','sev','dtype','onSave','effect'],
+  social:['name','desc','skills','diff','outcome'],
+  monsterSit:['name','desc'],
+  combatHaz:['name','desc','dtype'],
+};
+function pickRandom(arr) { return arr.length ? arr[Math.floor(Math.random()*arr.length)] : null; }
+function pickScene(w) {
+  const keys=['combat','hazard','event','social'];
+  const ws=keys.map(k=>Math.max(0,Number((w||DEF_SCENE_WEIGHTS)[k])||0));
+  const tot=ws.reduce((a,b)=>a+b,0); if(!tot) return 'combat';
+  let r=Math.random()*tot;
+  for(let i=0;i<keys.length;i++){ r-=ws[i]; if(r<0) return keys[i]; }
+  return 'combat';
 }
 
 const DIFF_COLORS = {
@@ -487,7 +539,7 @@ function loadData() {
   try {
     return {
       lists:        JSON.parse(localStorage.getItem('dnd_lists'))    || DEF_LISTS,
-      settings:     JSON.parse(localStorage.getItem('dnd_settings')) || DEF_SETTINGS,
+      settings:     {...DEF_SETTINGS, ...(JSON.parse(localStorage.getItem('dnd_settings')) || {})},
       activeListId: localStorage.getItem('dnd_active_list')         || DEF_LISTS[0].id,
     };
   } catch { return { lists:DEF_LISTS, settings:DEF_SETTINGS, activeListId:DEF_LISTS[0].id }; }
@@ -1132,7 +1184,9 @@ function StatBlockPanel({ autoSearchName, autoSearchTrigger, onMonsterLoad, onSu
 /* ══════════════════════════════════════════
    ROLL PAGE
 ══════════════════════════════════════════ */
-function RollPage({ lists, settings, activeListId, setActiveListId, party }) {
+function RollPage({ lists, settings, activeListId, setActiveListId, party, challenges }) {
+  const [challengeLvl, setChallengeLvl] = useChallengeLevel();
+  const [dmgRoll, setDmgRoll] = useState(null);
   const [phase, setPhase]   = useState('idle');
   const [roll,  setRoll]    = useState(null);
   const [history,setHistory]= useState([]);
@@ -1147,8 +1201,7 @@ function RollPage({ lists, settings, activeListId, setActiveListId, party }) {
   const probs = list ? listProbs(list.items.length) : [];
 
   const chk = useDice(roll?.chkVal, chkTrig, settings.checkDieSides);
-  const d1  = useDice(roll?.d1,     encTrig, 8);
-  const d2  = useDice(roll?.d2,     encTrig, 8);
+  const dRow = useDice(roll?.idx!=null ? roll.idx+1 : null, encTrig, Math.max(1, list?.items.length||1));
 
   function doRoll() {
     if (!list || list.items.length===0) return;
@@ -1158,16 +1211,30 @@ function RollPage({ lists, settings, activeListId, setActiveListId, party }) {
     const isEnc  = settings.encounterValues.includes(chkVal);
 
     let r = { chkVal, isEnc };
+    setDmgRoll(null);
     if (isEnc) {
-      const a=rollDie(8), b=rollDie(8), sum=a+b;
-      const idx=Math.min(sum-2, list.items.length-1);
-      r = { ...r, d1:a, d2:b, sum, idx, name:list.items[idx] };
+      const scene = pickScene(settings.sceneWeights);
+      r.scene = scene;
+      if (scene === 'combat') {
+        const idx=Math.floor(Math.random()*list.items.length);   // uniforme
+        r = { ...r, idx, name:list.items[idx] };
+        r.situation = pickRandom(parseTable((challenges||DEF_CHALLENGES).monsterSit, TABLE_FIELDS.monsterSit));
+        r.combatHaz = Math.random() < 1/3
+          ? pickRandom(parseTable((challenges||DEF_CHALLENGES).combatHaz, TABLE_FIELDS.combatHaz)) : null;
+      } else {
+        const key = scene;
+        r.challenge = pickRandom(parseTable((challenges||DEF_CHALLENGES)[key], TABLE_FIELDS[key]));
+        r.name = r.challenge ? r.challenge.name : '—';
+      }
     }
 
     setRoll(r); setPhase('chk'); setChkTrig(t=>t+1);
 
     setTimeout(()=>{
-      if (isEnc) {
+      if (isEnc && r.scene !== 'combat') {
+        setPhase('enc');
+        setHistory(h=>[{...r,ts:Date.now()},...h].slice(0,12));
+      } else if (isEnc) {
         setPhase('enc-roll'); setEncTrig(t=>t+1);
         setTimeout(()=>{
           setPhase('enc');
@@ -1231,39 +1298,103 @@ function RollPage({ lists, settings, activeListId, setActiveListId, party }) {
             </div>
           )}
 
-          {(phase==='enc-roll'||phase==='enc') && roll?.isEnc && (
+          {(phase==='enc-roll'||phase==='enc') && roll?.isEnc && roll.scene==='combat' && (
             <div className="fade-up" style={{textAlign:'center',width:'100%'}}>
               <div style={{fontSize:'.72rem',color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:'.65rem'}}>
-                Tipo di incontro — 2d8
+                Tipo di incontro — d{list.items.length}
               </div>
               <div className="dice-row">
-                <div className={`die ${d1.spinning?'rolling':'landed-neutral'}`}>
-                  <span>{d1.disp??'?'}</span><span className="die-lbl">d8</span>
-                </div>
-                <span className="die-sep">+</span>
-                <div className={`die ${d2.spinning?'rolling':'landed-neutral'}`}>
-                  <span>{d2.disp??'?'}</span><span className="die-lbl">d8</span>
-                </div>
-                <span className="die-sep">=</span>
-                <div className="die sum-die">
-                  <span>{!d1.spinning&&!d2.spinning?roll.sum:'?'}</span>
-                  <span className="die-lbl">somma</span>
+                <div className={`die ${dRow.spinning?'rolling':'landed-neutral'}`}>
+                  <span>{dRow.disp??'?'}</span><span className="die-lbl">d{list.items.length}</span>
                 </div>
               </div>
             </div>
           )}
 
-          {phase==='enc' && roll && (
+          {phase==='enc' && roll && roll.scene==='combat' && (
             <div className="result-card enc pop-in" style={{width:'100%'}}>
-              <div className="result-label">Risultato</div>
+              <div className="result-label">{SCENE_LABELS.combat}</div>
               <div className="result-big enc">⚔️ INCONTRO!</div>
               <div className="enc-name">{roll.name}</div>
               <div className="enc-sub">
                 Posizione {roll.idx+1} su {list.items.length}&nbsp;·&nbsp;
                 Prob: {probs[roll.idx]?(probs[roll.idx]*100).toFixed(1):'?'}%
               </div>
+              {roll.situation && (
+                <div style={{marginTop:'.6rem',fontSize:'.82rem',textAlign:'left'}}>
+                  <strong style={{color:'var(--gold)'}}>Situazione: {roll.situation.name}</strong>
+                  <div style={{color:'var(--muted)'}}>{roll.situation.desc}</div>
+                </div>
+              )}
+              {roll.combatHaz && (
+                <div style={{marginTop:'.5rem',fontSize:'.82rem',textAlign:'left'}}>
+                  <strong style={{color:'var(--gold)'}}>Ambiente: {roll.combatHaz.name}{roll.combatHaz.dtype ? ' ('+roll.combatHaz.dtype+')' : ''}</strong>
+                  <div style={{color:'var(--muted)'}}>{roll.combatHaz.desc}</div>
+                </div>
+              )}
             </div>
           )}
+
+          {phase==='enc' && roll && roll.scene!=='combat' && roll.challenge && (()=>{
+            const ch = roll.challenge;
+            const isSoc = roll.scene==='social';
+            const mech = !isSoc ? hazardMech(ch.sev, challengeLvl) : null;
+            const dc = isSoc ? (SOCIAL_DC[ch.diff] || 15) : mech.dc;
+            const sevColor = {Lieve:'var(--green)',Pericolosa:'var(--gold)',Mortale:'var(--red)'}[ch.sev]||'var(--muted)';
+            const pill = {padding:'.1rem .5rem',borderRadius:'99px',background:'var(--surf2)',border:'1px solid var(--border)'};
+            const hasDetect = !isSoc && ch.detect && ch.detect!=='—' && ch.detect!=='-';
+            const hasDmg = !isSoc && ch.dtype && ch.dtype!=='Nessuno' && ch.dtype!=='—';
+            const onSaveTxt = { 'Metà':'danno dimezzato', 'Nessuno':'nessun danno né effetto' }[ch.onSave] || 'nessuna conseguenza';
+            const isSave = /^salvezza/i.test(ch.check||'');
+            return (
+              <div className="result-card enc pop-in" style={{width:'100%',textAlign:'left'}}>
+                <div className="result-label">{SCENE_LABELS[roll.scene]}</div>
+                <div className="enc-name" style={{textAlign:'center'}}>{ch.name}</div>
+                <div style={{margin:'.5rem 0',fontSize:'.88rem'}}>{ch.desc}</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:'.4rem',alignItems:'center',fontSize:'.8rem',marginBottom:'.5rem'}}>
+                  <ChallengeLevelSelect value={challengeLvl} onChange={setChallengeLvl} />
+                  {!isSoc && ch.sev && (
+                    <span style={{padding:'.1rem .5rem',borderRadius:'99px',color:sevColor,border:'1px solid '+sevColor}}>{ch.sev}</span>
+                  )}
+                  {isSoc && ch.diff && <span style={{color:'var(--muted)'}}>{ch.diff}</span>}
+                </div>
+                {isSoc ? (
+                  <>
+                    <div style={{fontSize:'.82rem',marginBottom:'.3rem'}}>
+                      <span style={pill}>Prova: <strong>{ch.skills}</strong> · CD <strong>{dc}</strong></span>
+                    </div>
+                    <div style={{fontSize:'.82rem',color:'var(--muted)'}}>Esito: {ch.outcome}</div>
+                  </>
+                ) : (
+                  <div style={{display:'flex',flexDirection:'column',gap:'.35rem',fontSize:'.82rem'}}>
+                    {hasDetect && (
+                      <div><span style={pill}>Rilevamento (facoltativo): <strong>{ch.detect}</strong> · CD <strong>{DETECT_DC[sevIdx(ch.sev)]}</strong></span></div>
+                    )}
+                    <div><span style={pill}>{ch.check}: CD <strong>{dc}</strong></span></div>
+                    {hasDmg && (
+                      <div>Danno se fallisce: <strong style={{color:'var(--red)'}}>{mech.dice} {ch.dtype}</strong>
+                        {isSave && <span style={{color:'var(--muted)'}}> · se riesce: {onSaveTxt}</span>}</div>
+                    )}
+                    {!hasDmg && isSave && ch.onSave && ch.onSave!=='—' && (
+                      <div style={{color:'var(--muted)'}}>Se riesce: {onSaveTxt}</div>
+                    )}
+                    <div style={{color:'var(--muted)'}}>Se fallisce: {ch.effect}</div>
+                    {hasDmg && (
+                      <div style={{display:'flex',gap:'.5rem',alignItems:'center',flexWrap:'wrap'}}>
+                        <button className="btn btn-secondary" style={{padding:'2px 10px',fontSize:'.78rem'}}
+                          onClick={()=>setDmgRoll(rollDice(mech.dice))}>🎲 Tira danno</button>
+                        {dmgRoll && (
+                          <span>
+                            {dmgRoll.total} {ch.dtype} <span style={{color:'var(--muted)'}}>({dmgRoll.rolls.join('+')}) · dimezzato: {Math.floor(dmgRoll.total/2)}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {phase==='no-enc' && roll && (
             <div className="result-card safe pop-in" style={{width:'100%'}}>
@@ -1281,9 +1412,9 @@ function RollPage({ lists, settings, activeListId, setActiveListId, party }) {
               {history.map((h,i)=>(
                 <div key={i} className="hist-item">
                   <span className={`badge ${h.isEnc?'badge-enc':'badge-safe'}`}>{h.isEnc?'⚔️':'✅'}</span>
-                  <span style={{flex:1}}>{h.isEnc?h.name:'Nessun incontro'}</span>
+                  <span style={{flex:1}}>{h.isEnc?((h.scene&&h.scene!=='combat'?(SCENE_LABELS[h.scene].split(' ')[0]+' '):'')+h.name):'Nessun incontro'}</span>
                   <span className="hist-dice">
-                    {h.isEnc?`d${settings.checkDieSides}:${h.chkVal} | 2d8:${h.sum}`:`d${settings.checkDieSides}:${h.chkVal}`}
+                    {h.isEnc&&h.idx!=null?`d${settings.checkDieSides}:${h.chkVal} | riga ${h.idx+1}`:`d${settings.checkDieSides}:${h.chkVal}`}
                   </span>
                 </div>
               ))}
@@ -1293,7 +1424,7 @@ function RollPage({ lists, settings, activeListId, setActiveListId, party }) {
 
         {/* ── Col 2: stat block ── */}
         <StatBlockPanel
-          autoSearchName={roll?.name||null}
+          autoSearchName={roll?.scene==='combat' ? (roll?.name||null) : null}
           autoSearchTrigger={sbTrig}
           onMonsterLoad={setLoadedMonster}
           onSuggestionsLoad={setLoadedSuggestions}
@@ -1302,12 +1433,14 @@ function RollPage({ lists, settings, activeListId, setActiveListId, party }) {
         />
         {/* ── Col 3: initiative tracker ── */}
         <InitiativeTracker
-          encounterName={roll?.name||null}
+          encounterName={roll?.scene==='combat' ? (roll?.name||null) : null}
           monster={loadedMonster}
           allMonsters={loadedSuggestions.length ? loadedSuggestions : (loadedMonster ? [loadedMonster] : [])}
-          encTrigger={phase==='enc' ? sbTrig : 0}
+          encTrigger={phase==='enc' && roll?.scene==='combat' ? sbTrig : 0}
           party={party||[]}
           onLaunchedChange={setLaunchedKeys}
+          challengeLvl={challengeLvl}
+          setChallengeLvl={setChallengeLvl}
         />
       </div>
     </div>
@@ -1437,9 +1570,7 @@ function ListsPage({ lists, setLists, activeListId, setActiveListId }) {
             {sel.items.length>0&&(
               <div className="info-box" style={{marginTop:'1rem'}}>
                 📊 <strong>{sel.items.length}</strong> incontri · Prob. max: <strong>{(maxP*100).toFixed(1)}%</strong>
-                {sel.items.length<14&&' · Ideale: 14 elementi per 2d8'}
-                {sel.items.length===14&&' · Perfetto per 2d8 ✨'}
-                {sel.items.length>14&&' · >14: gli ultimi condividono uno slot'}
+                {' · Probabilità uniforme'}
                 <br/><span style={{fontSize:'.75rem',marginTop:'.35rem',display:'block'}}>
                   💡 Usa nomi in inglese (es: "Goblin", "Bandit") per il match automatico con Open5e.
                 </span>
@@ -1457,6 +1588,45 @@ function ListsPage({ lists, setLists, activeListId, setActiveListId }) {
 /* ══════════════════════════════════════════
    SETTINGS PAGE
 ══════════════════════════════════════════ */
+/* ══════════════════════════════════════════
+   CHALLENGES PAGE
+══════════════════════════════════════════ */
+const CHAL_META = [
+  { key:'hazard',     title:'🪤 Ostacoli e pericoli',   fmt:'Nome | Scena | Rilevamento (o —) | Prova o Salvezza | Gravità (Lieve/Pericolosa/Mortale) | Tipo di danno (o Nessuno) | Se riesce (Metà/Nessuno/—) | Effetto se fallisce' },
+  { key:'event',      title:'🌩️ Eventi ambientali',     fmt:'Nome | Scena | Rilevamento (o —) | Prova o Salvezza | Gravità (Lieve/Pericolosa/Mortale) | Tipo di danno (o Nessuno) | Se riesce (Metà/Nessuno/—) | Effetto se fallisce' },
+  { key:'social',     title:'🗣️ Incontri sociali',      fmt:'Chi | Situazione | Prove | Difficoltà (Facile/Media/Difficile) | Esito' },
+  { key:'monsterSit', title:'🎭 Situazioni dei mostri', fmt:'Nome | Descrizione' },
+  { key:'combatHaz',  title:'🌫️ Pericoli ambientali in combattimento', fmt:'Nome | Descrizione | Tipo di danno (facoltativo)' },
+];
+function ChallengesPage({ challenges, setChallenges }) {
+  return (
+    <div>
+      <div className="page-header">
+        <h2>🪤 Tabelle Sfide</h2>
+        <p>Una voce per riga, campi separati da <code>|</code>. Le modifiche si salvano automaticamente.</p>
+      </div>
+      <div style={{maxWidth:900,display:'flex',flexDirection:'column',gap:'1rem'}}>
+        {CHAL_META.map(m => (
+          <div className="card" key={m.key}>
+            <div className="card-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span>{m.title} ({String(challenges[m.key]||'').split('\n').filter(l=>l.trim()).length})</span>
+              <button className="btn btn-secondary" style={{padding:'2px 8px',fontSize:'.72rem'}}
+                onClick={()=>{ if(confirm('Ripristinare questa tabella ai valori iniziali?')) setChallenges({...challenges,[m.key]:DEF_CHALLENGES[m.key]}); }}>
+                Ripristina
+              </button>
+            </div>
+            <p style={{fontSize:'.76rem',color:'var(--muted)',marginBottom:'.4rem'}}>Formato: {m.fmt}</p>
+            <textarea className="input-field" rows={8} spellCheck={false}
+              style={{width:'100%',fontFamily:'inherit',fontSize:'.8rem',resize:'vertical'}}
+              value={challenges[m.key]||''}
+              onChange={e=>setChallenges({...challenges,[m.key]:e.target.value})} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage({ settings, setSettings, lists, setLists, party, setParty, activeListId, setActiveListId }) {
   const sides=[4,6,8,10,12,20];
   function toggleVal(v){
@@ -1491,6 +1661,23 @@ function SettingsPage({ settings, setSettings, lists, setLists, party, setParty,
           <div className="info-box">
             Probabilità incontro: <strong>{pct}%</strong> ({settings.encounterValues.length}/{settings.checkDieSides}) · Su: <strong>{ev.join(', ')}</strong>
           </div>
+        </div>
+        <div className="card">
+          <div className="card-title">🎬 Tipo di scena (quando c'è un incontro)</div>
+          <p style={{fontSize:'.82rem',color:'var(--muted)',marginBottom:'.6rem'}}>Pesi relativi: vengono normalizzati automaticamente.</p>
+          {(()=>{
+            const w = settings.sceneWeights || DEF_SCENE_WEIGHTS;
+            const tot = ['combat','hazard','event','social'].reduce((s,k)=>s+(Number(w[k])||0),0) || 1;
+            return ['combat','hazard','event','social'].map(k=>(
+              <div key={k} style={{display:'flex',alignItems:'center',gap:'.6rem',marginBottom:'.4rem'}}>
+                <span style={{flex:1,fontSize:'.85rem'}}>{SCENE_LABELS[k]}</span>
+                <input type="number" min="0" max="100" className="input-field" style={{width:'4.5rem',textAlign:'center'}}
+                  value={w[k]}
+                  onChange={e=>setSettings({...settings,sceneWeights:{...w,[k]:Math.max(0,parseInt(e.target.value)||0)}})} />
+                <span style={{width:'3rem',fontSize:'.8rem',color:'var(--muted)'}}>{Math.round((Number(w[k])||0)/tot*100)}%</span>
+              </div>
+            ));
+          })()}
         </div>
         {/* ── CR Max slider ── */}
         <div className="card">
@@ -1534,9 +1721,9 @@ function SettingsPage({ settings, setSettings, lists, setLists, party, setParty,
           <div className="card-title">Come funziona</div>
           <div style={{fontSize:'.83rem',color:'var(--muted)',lineHeight:'1.65',display:'flex',flexDirection:'column',gap:'.6rem'}}>
             <p><strong style={{color:'var(--text)'}}>1. Tiro di verifica</strong><br/>Si tira un d{settings.checkDieSides}. Se esce {ev.join(' o ')}, scatta un incontro ({pct}%).</p>
-            <p><strong style={{color:'var(--text)'}}>2. Tipo di incontro</strong><br/>Si tirano 2d8 (risultati 2–16). Curva a campana: gli incontri centrali appaiono più spesso.</p>
+            <p><strong style={{color:'var(--text)'}}>2. Tipo di incontro</strong><br/>Con un incontro, si sceglie il tipo di scena (combattimento, ostacolo, evento, sociale) con i pesi delle Impostazioni. Per il combattimento si sceglie una riga della lista con probabilità uniforme.</p>
             <p><strong style={{color:'var(--text)'}}>3. Stat Block automatico</strong><br/>Quando scatta un incontro, l'app cerca lo stat block su Open5e. Usa nomi in inglese nelle liste.</p>
-            <p><strong style={{color:'var(--text)'}}>Consiglio</strong><br/>14 elementi sfruttano al meglio la distribuzione 2d8.</p>
+            <p><strong style={{color:'var(--text)'}}>Consiglio</strong><br/>La lista può avere qualsiasi numero di elementi: ognuno ha la stessa probabilità.</p>
           </div>
         </div>
         {/* ── Export / Import ── */}
@@ -1608,8 +1795,7 @@ function SettingsPage({ settings, setSettings, lists, setLists, party, setParty,
 /* ══════════════════════════════════════════
    INITIATIVE TRACKER
 ══════════════════════════════════════════ */
-function InitiativeTracker({ encounterName, monster, allMonsters, encTrigger, party, onLaunchedChange }) {
-  const [challengeLvl, setChallengeLvl] = useChallengeLevel();
+function InitiativeTracker({ encounterName, monster, allMonsters, encTrigger, party, onLaunchedChange, challengeLvl, setChallengeLvl }) {
   const [variantCounts, setVariantCounts] = useState({});
   const [rows,          setRows]          = useState([]);
   const [launched,      setLaunched]      = useState(false);
@@ -2436,6 +2622,11 @@ function App() {
   const [activeListId, setActiveIdRaw] = useState(stored.activeListId);
   const [party, setPartyRaw] = useState(()=>{ try{return JSON.parse(localStorage.getItem('dnd_party')||'[]');}catch{return [];} });
 
+  const [challenges, setChallengesRaw] = useState(()=>{
+    try { return {...DEF_CHALLENGES, ...(JSON.parse(localStorage.getItem('dnd_challenges_v2')||'{}'))}; }
+    catch { return DEF_CHALLENGES; }
+  });
+  function setChallenges(v)   {setChallengesRaw(v); save('dnd_challenges_v2',v);}
   function setLists(v)        {setListsRaw(v);    save('dnd_lists',v);}
   function setSettings(v)     {setSettingsRaw(v); save('dnd_settings',v);}
   function setActiveListId(v) {setActiveIdRaw(v); save('dnd_active_list',v);}
@@ -2445,6 +2636,7 @@ function App() {
     {id:'roll',    icon:'🎲',label:'Lancia i Dadi'},
     {id:'battle',  icon:'⚔️',label:'Battaglia'},
     {id:'lists',   icon:'📋',label:'Liste Incontri'},
+    {id:'challenges', icon:'🪤',label:'Tabelle Sfide'},
     {id:'party',   icon:'🧙',label:'Party'},
     {id:'settings',icon:'⚙️',label:'Impostazioni'},
   ];
@@ -2471,9 +2663,10 @@ function App() {
         </div>
       </nav>
       <main className="main">
-        {page==='roll'     && <RollPage     lists={lists} settings={settings} activeListId={activeListId} setActiveListId={setActiveListId} party={party} />}
+        {page==='roll'     && <RollPage     lists={lists} settings={settings} activeListId={activeListId} setActiveListId={setActiveListId} party={party} challenges={challenges} />}
         {page==='battle'   && <BattlePage   party={party} settings={settings} />}
         {page==='lists'    && <ListsPage    lists={lists} setLists={setLists} activeListId={activeListId} setActiveListId={setActiveListId} />}
+        {page==='challenges' && <ChallengesPage challenges={challenges} setChallenges={setChallenges} />}
         {page==='party'    && <PartyPage    party={party} setParty={setParty} />}
         {page==='settings' && <SettingsPage settings={settings} setSettings={setSettings} lists={lists} setLists={setLists} party={party} setParty={setParty} activeListId={activeListId} setActiveListId={setActiveListId} />}
       </main>
