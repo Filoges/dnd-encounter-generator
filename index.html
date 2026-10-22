@@ -1627,7 +1627,7 @@ function ChallengesPage({ challenges, setChallenges }) {
   );
 }
 
-function SettingsPage({ settings, setSettings, lists, setLists, party, setParty, activeListId, setActiveListId }) {
+function SettingsPage({ settings, setSettings, lists, setLists, party, setParty, activeListId, setActiveListId, challenges, setChallenges }) {
   const sides=[4,6,8,10,12,20];
   function toggleVal(v){
     const ev=settings.encounterValues;
@@ -1730,17 +1730,18 @@ function SettingsPage({ settings, setSettings, lists, setLists, party, setParty,
         <div className="card">
           <div className="card-title">💾 Backup & Ripristino</div>
           <p style={{fontSize:'.82rem',color:'var(--muted)',marginBottom:'1rem'}}>
-            Esporta tutti i tuoi dati (liste, party, impostazioni) in un file <code>.json</code> e reimportali su qualsiasi browser o dispositivo.
+            Esporta tutti i tuoi dati (liste, party, impostazioni, tabelle sfide) in un file <code>.json</code> e reimportali su qualsiasi browser o dispositivo.
           </p>
           <div style={{display:'flex',gap:'.75rem',flexWrap:'wrap'}}>
             <button className="btn btn-primary" onClick={()=>{
               const data = {
-                version: 1,
+                version: 2,
                 exported: new Date().toISOString(),
                 lists,
                 settings,
                 party,
                 activeListId,
+                challenges,
               };
               const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
               const url  = URL.createObjectURL(blob);
@@ -1765,8 +1766,11 @@ function SettingsPage({ settings, setSettings, lists, setLists, party, setParty,
                     const data = JSON.parse(re.target.result);
                     let imported = [];
                     if (data.lists    && Array.isArray(data.lists))    { setLists(data.lists);           imported.push('liste'); }
-                    if (data.settings && typeof data.settings==='object'){ setSettings(data.settings);   imported.push('impostazioni'); }
+                    if (data.settings && typeof data.settings==='object'){ setSettings({...DEF_SETTINGS, ...data.settings});   imported.push('impostazioni'); }
                     if (data.party    && Array.isArray(data.party))    { setParty(data.party);           imported.push('party'); }
+                    if (data.challenges && typeof data.challenges==='object' && !Array.isArray(data.challenges)) {
+                      setChallenges({...DEF_CHALLENGES, ...data.challenges}); imported.push('tabelle sfide');
+                    }
                     if (data.activeListId)                             { setActiveListId(data.activeListId); }
                     alert('✅ Importazione completata! Dati caricati: ' + (imported.join(', ') || 'nessuno'));
                   } catch(err) {
@@ -2668,7 +2672,7 @@ function App() {
         {page==='lists'    && <ListsPage    lists={lists} setLists={setLists} activeListId={activeListId} setActiveListId={setActiveListId} />}
         {page==='challenges' && <ChallengesPage challenges={challenges} setChallenges={setChallenges} />}
         {page==='party'    && <PartyPage    party={party} setParty={setParty} />}
-        {page==='settings' && <SettingsPage settings={settings} setSettings={setSettings} lists={lists} setLists={setLists} party={party} setParty={setParty} activeListId={activeListId} setActiveListId={setActiveListId} />}
+        {page==='settings' && <SettingsPage settings={settings} setSettings={setSettings} lists={lists} setLists={setLists} party={party} setParty={setParty} activeListId={activeListId} setActiveListId={setActiveListId} challenges={challenges} setChallenges={setChallenges} />}
       </main>
     </div>
   );
