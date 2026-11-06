@@ -368,7 +368,7 @@ function modStr(score) { const m=abilityMod(score); return m>=0?`+${m}`:`${m}`; 
    STORAGE
 ══════════════════════════════════════════ */
 const DEF_SCENE_WEIGHTS = { combat:30, hazard:40, event:20, social:10 };
-const DEF_SETTINGS = { checkDieSides:8, encounterValues:[7,8], maxCR:null, sceneWeights:DEF_SCENE_WEIGHTS };
+const DEF_SETTINGS = { checkDieSides:8, encounterValues:[7,8], maxCR:null, sceneWeights:DEF_SCENE_WEIGHTS, medioPct:70 };
 
 // CR helpers
 function crToNum(cr) {
@@ -424,6 +424,20 @@ function monsterXP(cr) { return CR_XP[String(cr)] || 0; }
 // variants: array of normalized monsters; counts: {key:n}; party: [{level,...}]
 // 5e 2024: no multiplier, 3 thresholds per player (Facile / Medio / Difficile)
 // playerCount = n° giocatori nel party; level = livello della sfida (tutti i PG considerati a quel livello)
+// Intervallo di XP per una difficoltà obiettivo (Medio: [soglia Medio, soglia Difficile); Difficile: >= soglia Difficile)
+function diffRange(difficulty, playerCount, level) {
+  if (!playerCount || playerCount < 1) return null;
+  const t = XP_THRESHOLDS[Math.min(20, Math.max(1, parseInt(level) || 1))];
+  const med = t[1]*playerCount, dif = t[2]*playerCount;
+  if (difficulty === 'Medio')     return { min: med, max: dif - 1 };
+  if (difficulty === 'Difficile') return { min: dif, max: null };
+  return { min: 0, max: med - 1 };
+}
+function rangeText(r) {
+  if (!r) return '';
+  return r.max == null ? `≥ ${r.min.toLocaleString()} XP` : `${r.min.toLocaleString()}–${r.max.toLocaleString()} XP`;
+}
+
 function calcEncounterDifficulty(variants, counts, playerCount, level) {
   if (!playerCount || playerCount < 1 || !variants || !variants.length) return null;
   let totalMonsters = 0, totalXP = 0;
@@ -1218,6 +1232,7 @@ function RollPage({ lists, settings, activeListId, setActiveListId, party, chall
       if (scene === 'combat') {
         const idx=Math.floor(Math.random()*list.items.length);   // uniforme
         r = { ...r, idx, name:list.items[idx] };
+        r.targetDiff = (Math.random()*100 < (settings.medioPct ?? 70)) ? 'Medio' : 'Difficile';
         r.situation = pickRandom(parseTable((challenges||DEF_CHALLENGES).monsterSit, TABLE_FIELDS.monsterSit));
         r.combatHaz = Math.random() < 1/3
           ? pickRandom(parseTable((challenges||DEF_CHALLENGES).combatHaz, TABLE_FIELDS.combatHaz)) : null;
@@ -1320,6 +1335,14 @@ function RollPage({ lists, settings, activeListId, setActiveListId, party, chall
                 Posizione {roll.idx+1} su {list.items.length}&nbsp;·&nbsp;
                 Prob: {probs[roll.idx]?(probs[roll.idx]*100).toFixed(1):'?'}%
               </div>
+              {roll.targetDiff && (
+                <div style={{marginTop:'.6rem',fontSize:'.82rem',textAlign:'left'}}>
+                  <strong style={{color:DIFF_COLORS[roll.targetDiff]}}>🎯 Difficoltà: {roll.targetDiff}</strong>
+                  {(party||[]).length>0 && (
+                    <span style={{color:'var(--muted)'}}> · obiettivo {rangeText(diffRange(roll.targetDiff,(party||[]).length,challengeLvl))} (livello {challengeLvl}, {(party||[]).length} PG)</span>
+                  )}
+                </div>
+              )}
               {roll.situation && (
                 <div style={{marginTop:'.6rem',fontSize:'.82rem',textAlign:'left'}}>
                   <strong style={{color:'var(--gold)'}}>Situazione: {roll.situation.name}</strong>
@@ -1441,6 +1464,7 @@ function RollPage({ lists, settings, activeListId, setActiveListId, party, chall
           onLaunchedChange={setLaunchedKeys}
           challengeLvl={challengeLvl}
           setChallengeLvl={setChallengeLvl}
+          targetDiff={roll?.scene==='combat' ? (roll.targetDiff||null) : null}
         />
       </div>
     </div>
@@ -1679,6 +1703,17 @@ function SettingsPage({ settings, setSettings, lists, setLists, party, setParty,
             ));
           })()}
         </div>
+        <div className="card">
+          <div className="card-title">🎯 Difficoltà obiettivo del combattimento</div>
+          <p style={{fontSize:'.82rem',color:'var(--muted)',marginBottom:'.6rem'}}>Quando esce un combattimento, il tiro sceglie tra Medio e Difficile.</p>
+          <div style={{display:'flex',alignItems:'center',gap:'.6rem'}}>
+            <span style={{flex:1,fontSize:'.85rem'}}>Medio</span>
+            <input type="number" min="0" max="100" className="input-field" style={{width:'4.5rem',textAlign:'center'}}
+              value={settings.medioPct ?? 70}
+              onChange={e=>setSettings({...settings,medioPct:Math.min(100,Math.max(0,parseInt(e.target.value)||0))})} />
+            <span style={{fontSize:'.8rem',color:'var(--muted)'}}>% · Difficile: {100-(settings.medioPct ?? 70)}%</span>
+          </div>
+        </div>
         {/* ── CR Max slider ── */}
         <div className="card">
           <div className="card-title">🎯 CR Massima (filtro mostri)</div>
@@ -1799,7 +1834,7 @@ function SettingsPage({ settings, setSettings, lists, setLists, party, setParty,
 /* ══════════════════════════════════════════
    INITIATIVE TRACKER
 ══════════════════════════════════════════ */
-function InitiativeTracker({ encounterName, monster, allMonsters, encTrigger, party, onLaunchedChange, challengeLvl, setChallengeLvl }) {
+function InitiativeTracker({ encounterName, monster, allMonsters, encTrigger, party, onLaunchedChange, challengeLvl, setChallengeLvl, targetDiff }) {
   const [variantCounts, setVariantCounts] = useState({});
   const [rows,          setRows]          = useState([]);
   const [launched,      setLaunched]      = useState(false);
@@ -1936,6 +1971,12 @@ function InitiativeTracker({ encounterName, monster, allMonsters, encTrigger, pa
           return (
             <>
               <ChallengeLevelSelect value={challengeLvl} onChange={setChallengeLvl} />
+              {targetDiff && (
+                <span style={{fontSize:'.68rem',color:DIFF_COLORS[targetDiff],whiteSpace:'nowrap'}}
+                  title="Difficoltà obiettivo generata dal tiro">
+                  🎯 {targetDiff} {rangeText(diffRange(targetDiff,(party||[]).length,challengeLvl))}
+                </span>
+              )}
               {_diff && (
                 <span style={{fontSize:'.68rem',padding:'.1rem .45rem',borderRadius:'99px',fontWeight:'bold',
                   background:_c+'22',color:_c,border:'1px solid '+_c+'44',whiteSpace:'nowrap'}}>
